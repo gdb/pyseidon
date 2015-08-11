@@ -9,6 +9,8 @@
 #include <sys/un.h>
 #include <unistd.h>
 
+extern char **environ;
+
 void handle_error(char *message)
 {
   fprintf(stderr, "Something went wrong! Error details:\n\n");
@@ -38,11 +40,37 @@ void handle_error(char *message)
   exit(200);
 }
 
+void pack_int(unsigned char bytes[4], unsigned long n)
+{
+  bytes[0] = n & 0xFF;
+  bytes[1] = (n >> 8) & 0xFF;
+  bytes[2] = (n >> 16) & 0xFF;
+  bytes[3] = (n >> 24) & 0xFF;
+}
+
+int unpack_int(unsigned char bytes[4])
+{
+  int output = 0;
+  output += bytes[0];
+  output += bytes[1] << 8;
+  output += bytes[2] << 16;
+  output += bytes[3] << 24;
+  return output;
+}
+
+
 void checked_send(int s, void *buffer, int length)
 {
   if (send(s, buffer, length, 0) < 0) {
     handle_error("Could not write bytes");
   }
+}
+
+void checked_send_int(int s, int value) {
+  unsigned char bytes[4];
+  pack_int(bytes, value);
+  // WRITE: argument count
+  checked_send(s, bytes, 4);
 }
 
 // Copied from http://code.swtch.com/plan9port/src/0e6ae8ed3276/src/lib9/sendfd.c
@@ -77,24 +105,6 @@ int checked_sendfd(int s, int fd)
   return 0;
 }
 
-void pack_int(unsigned char bytes[4], unsigned long n)
-{
-  bytes[0] = n & 0xFF;
-  bytes[1] = (n >> 8) & 0xFF;
-  bytes[2] = (n >> 16) & 0xFF;
-  bytes[3] = (n >> 24) & 0xFF;
-}
-
-int unpack_int(unsigned char bytes[4])
-{
-  int output = 0;
-  output += bytes[0];
-  output += bytes[1] << 8;
-  output += bytes[2] << 16;
-  output += bytes[3] << 24;
-  return output;
-}
-
 int main(int argc, char **argv)
 {
   char *sock_path = getenv("POSEIDON_SOCK");
@@ -113,18 +123,28 @@ int main(int argc, char **argv)
     handle_error("Could not connect to UNIX socket for master process");
   }
 
-  unsigned char bytes[4];
-  pack_int(bytes, argc);
-  // Write argument count
-  checked_send(s, bytes, 4);
+  // WRITE: argument count
+  checked_send_int(s, argc);
 
   for (int i = 0; i < argc; i++) {
-    // Write all arguments (including null terminators)
+    // WRITE: all arguments (including null terminators)
     checked_send(s, argv[i], strlen(argv[i]) + 1);
   }
 
-  // Write cwd
-  int size;
+  // WRITE: environment variable count
+  int env_size = 0;
+  while (environ[env_size] != NULL) {
+    env_size++;
+  }
+  checked_send_int(s, env_size);
+
+  for (int i = 0; i < env_size; i++) {
+    // WRITE: all environment variables (as k=v, including null terminators)
+    checked_send(s, environ[i], strlen(environ[i])+1);
+  }
+
+  // WRITE: cwd
+  int size = 0;
   if ((size = pathconf(".", _PC_PATH_MAX)) < 0) {
     handle_error("Could not determine file system's maximum path length");
   }

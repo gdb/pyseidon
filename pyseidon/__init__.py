@@ -45,8 +45,7 @@ class Pyseidon(object):
                 # We want to detect when a client has hung up (so we
                 # can tell the child about this). See
                 # http://stefan.buettcher.org/cs/conn_closed.html for
-                # a more general-purpose way of solving this problem
-                # with poll(2).
+                # another way of solving this problem with poll(2).
                 candidates = [self.loopbreak_reader, self.sock] + conns.keys()
                 readers, _, _ = select.select(candidates, [], [])
             except select.error as (err, msg):
@@ -123,10 +122,10 @@ class Pyseidon(object):
         conn, _ = self.sock.accept()
 
         # Note that these will be blocking, so a slow or misbehaving
-        # client could in theory cause issues. This could move
-        # post-fork, but would require some coordination around when
-        # to watch for client hangups.
+        # client could in theory cause issues. We could solve this by
+        # adding these to the event loop.
         argv = self._read_argv(conn)
+        env = self._read_env(conn)
         cwd = self._read_cwd(conn)
         fds = self._read_fds(conn)
 
@@ -140,21 +139,24 @@ class Pyseidon(object):
             self.children[pid] = {'conn': conn, 'pid': pid, 'notified': False}
         else:
             # Worker
-            self._setup_env(conn, argv, cwd, fds)
+            self._setup_env(conn, argv, env, cwd, fds)
             return argv
 
-    def _setup_env(self, conn, argv, cwd, fds):
+    def _setup_env(self, conn, argv, env, cwd, fds):
         # Close now-unneeded file descriptors
         conn.close()
         self.loopbreak_reader.close()
         self.loopbreak_writer.close()
         self.sock.close()
 
-        print >>sys.stderr, '[{}] cwd={} argv={}'.format(os.getpid(), cwd, argv)
+        print >>sys.stderr, '[{}] cwd={} argv={} env_count={}'.format(os.getpid(), cwd, argv, len(env))
 
         # Python doesn't natively let you set your actual
         # procname. TODO: consider importing a library for that.
         sys.argv = argv[1:]
+
+        # This changes the actual underlying environment
+        os.environ = env
 
         os.chdir(cwd)
 
@@ -183,6 +185,17 @@ class Pyseidon(object):
                 raise
 
     def _read_argv(self, conn):
+        return self._read_array(conn)
+
+    def _read_env(self, conn):
+        env = {}
+        kv_pairs = self._read_array(conn)
+        for kv in kv_pairs:
+            k, v = kv.split('=', 1)
+            env[k] = v
+        return env
+
+    def _read_array(self, conn):
         argc_packed = conn.recv(4)
         argc, = struct.unpack('I', argc_packed)
 
@@ -190,7 +203,7 @@ class Pyseidon(object):
         for i in xrange(argc):
             line = _recvline(conn, '\0')
             if line[-1] != '\0':
-                raise RuntimeError("Corrupted argument list; not null terminated: {}".format(line))
+                raise RuntimeError("Corrupted array; not null terminated: {}".format(line))
             argv.append(line.rstrip('\0'))
 
         return argv

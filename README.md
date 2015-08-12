@@ -46,3 +46,8 @@ access to all variables and code in the master's address space. This
 means it can access any data sets that were already loaded by the
 master (and can also stomp on that data or load new code without
 worry).
+
+# Future directions
+
+- Forward signals from the client
+- Rewrite the client in Go

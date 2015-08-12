@@ -73,5 +73,7 @@ setup(
     # To provide executable scripts, use entry points in preference to the
     # "scripts" keyword. Entry points provide cross-platform support and allow
     # pip to create the appropriate form of executable for the target platform.
-    scripts=['client/pyseidon']
+    scripts=['pyseidon/client/pyseidon'],
+
+    package_data={'pyseidon': ['pyseidon/client/Makefile', 'pyseidon/client/pyseidon.c']}
 )

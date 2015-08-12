@@ -24,7 +24,7 @@ pyseidon.run(handler)
 ```shell
 $ cd pyseidon/client && make
 [...]
-$ ./pyseidon-client sample args
+$ ./pyseidon sample args
 Hi from worker process. Your client ran with args: ['sample', 'args']
 ```
 

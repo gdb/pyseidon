@@ -47,7 +47,8 @@ means it can access any data sets that were already loaded by the
 master (and can also stomp on that data or load new code without
 worry).
 
-# Future directions
+# TODO
 
 - Forward signals from the client
 - Rewrite the client in Go
+- Find a less hacky way to compile the client

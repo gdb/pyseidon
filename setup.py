@@ -7,7 +7,7 @@ https://github.com/pypa/sampleproject
 
 # Always prefer setuptools over distutils
 from setuptools import setup, find_packages
-from distutils.command.install import install as DistutilsInstall
+from distutils.command.build import build as DistutilsBuild
 # To use a consistent encoding
 from codecs import open
 from os import path
@@ -16,20 +16,20 @@ import subprocess
 
 here = path.abspath(path.dirname(__file__))
 
-class BuildAndInstall(DistutilsInstall):
+class Build(DistutilsBuild):
     def run(self):
-        subprocess.check_call(['make', '-C', 'client'])
-        DistutilsInstall.run(self)
+        subprocess.check_call(['make', '-C', 'pyseidon/client'])
+        DistutilsBuild.run(self)
 
 setup(
-    cmdclass={'install': BuildAndInstall},
+    cmdclass={'build': Build},
 
     name='pyseidon',
 
     # Versions should comply with PEP440.  For a discussion on single-sourcing
     # the version across setup.py and the project code, see
     # https://packaging.python.org/en/latest/single_source_version.html
-    version='0.0.1',
+    version='0.0.3',
 
     description='A boot-once, run-many-times framework for Python',
     long_description='Pyseidon allows you to boot a Python master process, and then run clients that are forked directly from the master. This is particularly useful for completing a slow data-loading process once and then running many experiments.',
@@ -74,6 +74,5 @@ setup(
     # "scripts" keyword. Entry points provide cross-platform support and allow
     # pip to create the appropriate form of executable for the target platform.
     scripts=['pyseidon/client/pyseidon'],
-
-    package_data={'pyseidon': ['pyseidon/client/Makefile', 'pyseidon/client/pyseidon.c']}
+    package_data={'pyseidon': ['client/Makefile', 'client/pyseidon.c']}
 )

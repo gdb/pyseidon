@@ -48,7 +48,8 @@ class Pyseidon(object):
                 # another way of solving this problem with poll(2).
                 candidates = [self.loopbreak_reader, self.sock] + conns.keys()
                 readers, _, _ = select.select(candidates, [], [])
-            except select.error as (err, msg):
+            except select.error as e:
+                err, msg = e
                 if err == errno.EINTR:
                     # Probably just got a SIGCHLD. We'll forfeit this run
                     # through the loop.
@@ -108,7 +109,7 @@ class Pyseidon(object):
         # Make sure this socket is readable only by the current user,
         # since it'll give possibly arbitrary code execution to anyone
         # who can connect to it.
-        umask = os.umask(0077)
+        umask = os.umask(0o077)
         try:
             self.sock.bind(self.path)
         finally:
@@ -267,7 +268,8 @@ class Pyseidon(object):
                 try:
                     # TODO: make this non-blocking
                     conn.send(struct.pack('I', client_exit))
-                except socket.error as (err, _):
+                except socket.error as e:
+                    err, _ = e
                     # Shouldn't care if the client has died in the
                     # meanwhile. Their loss!
                     if err == errno.EPIPE:

@@ -29,7 +29,7 @@ setup(
     # Versions should comply with PEP440.  For a discussion on single-sourcing
     # the version across setup.py and the project code, see
     # https://packaging.python.org/en/latest/single_source_version.html
-    version='0.0.6',
+    version='0.0.7',
 
     description='A boot-once, run-many-times framework for Python',
     long_description='Pyseidon allows you to boot a Python master process, and then run clients that are forked directly from the master. This is particularly useful for completing a slow data-loading process once and then running many experiments.',
@@ -74,5 +74,5 @@ setup(
     # "scripts" keyword. Entry points provide cross-platform support and allow
     # pip to create the appropriate form of executable for the target platform.
     scripts=['pyseidon/client/pyseidon'],
-    package_data={'pyseidon': ['client/Makefile', 'client/pyseidon.c']}
+    package_data={'pyseidon': ['client/Makefile', 'client/pyseidon.c', 'client/pyseidon-client']}
 )

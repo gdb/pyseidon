@@ -1,3 +1,4 @@
+import array
 import atexit
 import errno
 import fcntl
@@ -10,15 +11,29 @@ import struct
 import sys
 
 # Read a line up to a custom delimiter
-def _recvline(io, delim='\n'):
+def _recvline(io, delim=b'\n'):
     buf = []
     while True:
         byte = io.recv(1)
         buf.append(byte)
 
         # End of line reached!
-        if byte == '' or byte == delim:
-            return ''.join(buf)
+        if byte == b'' or byte == delim:
+            return b''.join(buf)
+
+def _recvfds(sock):
+    msg, anc, flags, addr = sock.recvmsg(1, 4096)
+    fds = []
+    for level, type, data in anc:
+        fda = array.array('I')
+        fda.frombytes(data)
+        fds.extend(fda)
+    return fds
+
+def _recvfd(sock):
+    fds = _recvfds(sock)
+    assert len(fds) == 1, 'Expected exactly one FD, but got: {}'.format(fds)
+    return fds[0]
 
 class Pyseidon(object):
     def __init__(self, path='/tmp/pyseidon.sock'):
@@ -31,13 +46,13 @@ class Pyseidon(object):
         # blocking on them.
         fcntl.fcntl(r, fcntl.F_SETFL, fcntl.fcntl(r, fcntl.F_GETFL) | os.O_NONBLOCK)
         fcntl.fcntl(w, fcntl.F_SETFL, fcntl.fcntl(w, fcntl.F_GETFL) | os.O_NONBLOCK)
-        self.loopbreak_reader = os.fdopen(r, 'r', 0)
-        self.loopbreak_writer = os.fdopen(w, 'w', 0)
+        self.loopbreak_reader = os.fdopen(r, 'rb', 0)
+        self.loopbreak_writer = os.fdopen(w, 'wb', 0)
 
     def _run_event_loop(self):
         while True:
             conns = {}
-            for child in self.children.itervalues():
+            for child in self.children.values():
                 if not child['notified']:
                     conns[child['conn']] = child
 
@@ -46,11 +61,10 @@ class Pyseidon(object):
                 # can tell the child about this). See
                 # http://stefan.buettcher.org/cs/conn_closed.html for
                 # another way of solving this problem with poll(2).
-                candidates = [self.loopbreak_reader, self.sock] + conns.keys()
+                candidates = [self.loopbreak_reader, self.sock] + list(conns.keys())
                 readers, _, _ = select.select(candidates, [], [])
             except select.error as e:
-                err, msg = e
-                if err == errno.EINTR:
+                if e.errno == errno.EINTR:
                     # Probably just got a SIGCHLD. We'll forfeit this run
                     # through the loop.
                     continue
@@ -71,7 +85,7 @@ class Pyseidon(object):
                 elif reader in conns:
                     child = conns[reader]
                     data = self._socket_peek(reader)
-                    if data == '':
+                    if len(data) == 0:
                         self._notify_socket_dead(child)
                     elif data is None:
                         raise RuntimeError('Socket unexpectedly showed up in readers list, but has nothing to read: child={}'.format(child['pid']))
@@ -93,7 +107,7 @@ class Pyseidon(object):
 
     def _notify_socket_dead(self, child):
         child['notified'] = True
-        print >>sys.stderr, '[{}] Client disconnected; sending HUP: child={}'.format(os.getpid(), child['pid'])
+        print('[{}] Client disconnected; sending HUP: child={}'.format(os.getpid(), child['pid']), file=sys.stderr)
         try:
             # HUP is about right for this.
             os.kill(child['pid'], signal.SIGHUP)
@@ -117,7 +131,7 @@ class Pyseidon(object):
         atexit.register(self._remove_socket)
 
         self.sock.listen(1)
-        print >>sys.stderr, '[{}] Pyseidon master booted'.format(os.getpid())
+        print('[{}] Pyseidon master booted'.format(os.getpid()), file=sys.stderr)
 
     def _accept(self):
         conn, _ = self.sock.accept()
@@ -133,7 +147,7 @@ class Pyseidon(object):
         pid = os.fork()
         if pid:
             # Master
-            print >>sys.stderr, '[{}] Spawned worker: pid={} argv={} cwd={}'.format(os.getpid(), pid, argv, cwd)
+            print('[{}] Spawned worker: pid={} argv={} cwd={}'.format(os.getpid(), pid, argv, cwd), file= sys.stderr)
             # Do not want these FDs
             for fd in fds:
                 fd.close()
@@ -150,7 +164,7 @@ class Pyseidon(object):
         self.loopbreak_writer.close()
         self.sock.close()
 
-        print >>sys.stderr, '[{}] cwd={} argv={} env_count={}'.format(os.getpid(), cwd, argv, len(env))
+        print('[{}] cwd={} argv={} env_count={}'.format(os.getpid(), cwd, argv, len(env)), file=sys.stderr)
 
         # Python doesn't natively let you set your actual
         # procname. TODO: consider importing a library for that.
@@ -192,7 +206,7 @@ class Pyseidon(object):
         env = {}
         kv_pairs = self._read_array(conn)
         for kv in kv_pairs:
-            k, v = kv.split('=', 1)
+            k, v = kv.split(b'=', 1)
             env[k] = v
         return env
 
@@ -201,43 +215,29 @@ class Pyseidon(object):
         argc, = struct.unpack('I', argc_packed)
 
         argv = []
-        for i in xrange(argc):
-            line = _recvline(conn, '\0')
-            if line[-1] != '\0':
+        for i in range(argc):
+            line = _recvline(conn, b'\0')
+            if line[-1:] != b'\0':
                 raise RuntimeError("Corrupted array; not null terminated: {}".format(line))
-            argv.append(line.rstrip('\0'))
+            argv.append(line.rstrip(b'\0'))
 
         return argv
 
     def _read_cwd(self, conn):
-        line = _recvline(conn, '\0')
-        if line[-1] != '\0':
+        line = _recvline(conn, b'\0')
+        if line[-1:] != b'\0':
             raise RuntimeError("Corrupted cwd; not null terminated: {}".format(line))
-        return line.rstrip('\0')
+        return line.rstrip(b'\0')
 
     def _read_fds(self, conn):
-        # Per http://ptspts.blogspot.com/2013/08/how-to-send-unix-file-descriptors.html:
-        #
-        # """
-        # Be careful: there is no EOF handling in
-        # _multiprocessing.recvfd (because it's buggy). On EOF, it
-        # returns an arbitrary file descriptor number. We work it
-        # around by doing a regular sendall--recv pair first, so if
-        # there is an obvious reason for failure, they will fail
-        # properly.
-        # """
-        #
-        # In our case, we already read some bytes (for argc), so
-        # there's no value-add with duplicating their sendall--recv
-        # strategy.
-        stdin = os.fdopen(_multiprocessing.recvfd(conn.fileno()))
-        stdout = os.fdopen(_multiprocessing.recvfd(conn.fileno()), 'w')
-        stderr = os.fdopen(_multiprocessing.recvfd(conn.fileno()), 'w')
+        stdin = os.fdopen(_recvfd(conn))
+        stdout = os.fdopen(_recvfd(conn), 'w')
+        stderr = os.fdopen(_recvfd(conn), 'w')
         return stdin, stdout, stderr
 
     def _break_loop(self, signum, stack):
         try:
-            self.loopbreak_writer.write('a')
+            self.loopbreak_writer.write(b'a')
         except IOError as e:
             # The pipe is full. This is surprising, but could happen
             # in theory if we're being spammed with dying children.
@@ -257,22 +257,21 @@ class Pyseidon(object):
                 signal = exitinfo % 2**8
                 status = exitinfo >> 8
                 if signal:
-                    print >>sys.stderr, '[{}] Worker {} exited due to signal {}'.format(os.getpid(), pid, signal)
+                    print('[{}] Worker {} exited due to signal {}'.format(os.getpid(), pid, signal), file=sys.stderr)
                     # In this case, we'll just have the client exit
                     # with an arbitrary status 100.
                     client_exit = 100
                 else:
-                    print >>sys.stderr, '[{}] Worker {} exited with status {}'.format(os.getpid(), pid, status)
+                    print('[{}] Worker {} exited with status {}'.format(os.getpid(), pid, status), file=sys.stderr)
                     client_exit = status
                 conn = self.children[pid]['conn']
                 try:
                     # TODO: make this non-blocking
                     conn.send(struct.pack('I', client_exit))
                 except socket.error as e:
-                    err, _ = e
                     # Shouldn't care if the client has died in the
                     # meanwhile. Their loss!
-                    if err == errno.EPIPE:
+                    if e.errno == errno.EPIPE:
                         pass
                     else:
                         raise

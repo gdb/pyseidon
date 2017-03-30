@@ -168,7 +168,7 @@ class Pyseidon(object):
 
         # Python doesn't natively let you set your actual
         # procname. TODO: consider importing a library for that.
-        sys.argv = argv[1:]
+        sys.argv = [a.decode('utf-8') for a in argv[1:]]
 
         # This changes the actual underlying environment
         os.environ = env

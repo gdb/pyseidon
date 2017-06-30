@@ -29,7 +29,7 @@ setup(
     # Versions should comply with PEP440.  For a discussion on single-sourcing
     # the version across setup.py and the project code, see
     # https://packaging.python.org/en/latest/single_source_version.html
-    version='0.1.2',
+    version='0.1.3',
 
     description='A boot-once, run-many-times framework for Python',
     long_description='Pyseidon allows you to boot a Python master process, and then run clients that are forked directly from the master. This is particularly useful for completing a slow data-loading process once and then running many experiments.',

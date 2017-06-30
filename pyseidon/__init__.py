@@ -264,7 +264,11 @@ class Pyseidon(object):
                     # with an arbitrary status 100.
                     client_exit = 100
                 else:
-                    print('[{}] Worker {} exited with status {}'.format(os.getpid(), pid, status), file=sys.stderr)
+                    if pid in self.children:
+                        print('[{}] Worker {} exited with status {}'.format(os.getpid(), pid, status), file=sys.stderr)
+                    else:
+                        print('[{}] Non-worker child process {} exited with status {}'.format(os.getpid(), pid, status), file=sys.stderr)
+                        continue
                     client_exit = status
                 conn = self.children[pid]['conn']
                 try:

@@ -130,7 +130,7 @@ class Pyseidon(object):
             os.umask(umask)
         atexit.register(self._remove_socket)
 
-        self.sock.listen(1)
+        self.sock.listen()
         print('[{}] Pyseidon master booted'.format(os.getpid()), file=sys.stderr)
 
     def _accept(self):
